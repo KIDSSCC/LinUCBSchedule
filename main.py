@@ -1,6 +1,7 @@
 import csv
 import os
 import sys
+import time
 
 import numpy as np
 from LinUCB import *
@@ -10,16 +11,13 @@ rootPath = os.path.split(curPath)[0]
 sys.path.append(rootPath)
 from util import *
 
-NUM_RESOURCES_CACHE = 30  #total units of cache size 
-
-
-
+NUM_RESOURCES_CACHE = 32  #total units of cache size 
 
 
 if __name__ == '__main__':
     cm = config_management()
     curr_config = cm.receive_config()
-    # print(old_config)
+    print(curr_config)
 
     num_apps = len(curr_config[0])
     num_resources = [NUM_RESOURCES_CACHE]
@@ -63,10 +61,13 @@ if __name__ == '__main__':
         new_partition = all_cache_config[cache_index]
         new_config.append(new_partition)
 
+        print('new config:' + str(new_config))
         cm.send_config(new_config)
+        time.sleep(30)
 
         # waiting for result
         curr_config = cm.receive_config()
+        print('recv_config is: ' + str(curr_config))
         app_name = curr_config[0]
         cache_config = curr_config[1]
         cache_hit = curr_config[2]

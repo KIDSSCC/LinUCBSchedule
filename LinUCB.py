@@ -13,7 +13,7 @@ class LinUCB:
         self.alpha *= factor_alpha
         
         # print("n_arms:")
-        print(self.n_arms)
+        # print(self.n_arms)
 
         for arm in range(self.n_arms):
             A_inv = np.linalg.inv(self.A[arm])
@@ -60,4 +60,5 @@ def get_now_reward(curr_metrics):
     '''
     context = [1.0 for _ in range(18)]
     th_reward = sum(float(x) for x in curr_metrics)/len(curr_metrics)
+    print('reward is: '+ str(th_reward))
     return context, th_reward
