@@ -214,6 +214,7 @@ class simulation_config_management:
         for u in self.all_user:
             u.resources = self.total_resource // len(self.all_user)
 
+        self.n_features = 10
         self.workload_change = 2500
         self.counter = 0
 
@@ -223,7 +224,9 @@ class simulation_config_management:
         curr_config.append([u.name for u in self.all_user])
         curr_config.append([u.resources for u in self.all_user])
         curr_config.append([u.user_func(u.resources) for u in self.all_user])
-        curr_config.append([])
+        # context info
+        for i in range(self.n_features):
+            curr_config.append([1.0] * len(self.all_user))
 
         self.counter = self.counter + 1
         if self.workload_change > 0 and self.counter % self.workload_change == 0:

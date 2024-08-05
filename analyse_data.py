@@ -13,8 +13,11 @@ if __name__ == '__main__':
     reward = [float(i) for i in reward]
     best_score = 0.32
     target = [best_score] * len(index)
+    init_score = [reward[0]] * len(index)
+
     plt.plot(index, reward)
     plt.plot(index, target)
+    plt.plot(index, init_score)
     plt.axvline(x=2500, color='red', linestyle='--')
     plt.axvline(x=5000, color='red', linestyle='--')
     # 设置刻度

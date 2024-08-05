@@ -1,179 +1,166 @@
 import random
-import time
-from multiprocessing import Process, Manager
 import numpy as np
-import itertools
+from itertools import zip_longest
+from ScheduleFrame import *
 
-class LinUCB:
-    def __init__(self, alpha, n_arms, n_features):
-        self.alpha = alpha
-        self.n_arms = n_arms
+
+def gen_feasible_configs(num_of_cache, cache_top_k):
+    # TODO：根据各个应用的top_k整理出的所有可行的结果
+    num_app = len(cache_top_k)
+    top_k = len(cache_top_k[0])
+
+    def gen_side(tmp, k, n=1):
+        """
+        :param root: root node, first app node
+        :param n: n_th in top_k
+        :return:
+        """
+        if n == num_app:
+            return [[]]
+        for k in range(top_k):
+            t1 = k * top_k ** (num_app - n - 1)
+            t2 = top_k ** (num_app - 1) - (top_k - k - 1) * top_k ** (num_app - n - 1)
+            delta2 = top_k ** (num_app - 1 - n)
+            delta1 = top_k ** (num_app - n)
+            for i in range(t1, t2, delta1):
+                for j in range(i, i + delta2):
+                    app_core = cache_top_k[n][k]
+                    feasible_core = num_of_cache - sum(tmp[j])
+                    if app_core > feasible_core:
+                        tmp[j].append(feasible_core)
+                    else:
+                        tmp[j].append(app_core)
+
+        gen_side(n=n + 1, tmp=tmp, k=k)
+        return tmp
+
+    all_feasible_config = []
+    for j in range(top_k):
+        tmp = [[cache_top_k[0][j]] for _ in range(top_k ** (num_app - 1))]
+        all_feasible_config.extend(gen_side(tmp, k=0))
+    # 先去重
+    unique_tuples = set(tuple(x) for x in all_feasible_config)
+    all_feasible_config = [list(x) for x in unique_tuples]
+    # 对未利用的资源重新分配
+    for config in all_feasible_config:
+        assert sum(config) <= num_of_cache, 'The allocated cache exceeds the limit'
+        if sum(config) < num_of_cache:
+            left_cache = num_of_cache - sum(config)
+            for i in range(left_cache):
+                min_value = min(config)
+                min_index = config.index(min_value)
+                config[min_index] += 1
+    return all_feasible_config
+
+
+def get_top_k(arr, k, times):
+    if times < 5 or random.randint(1, 10) > 8:
+        arr_top_k_id = [random.randint(0, len(arr) - 1) for _ in range(k)]
+    else:
+        arr_top_k_id = np.argsort(arr)[-k:]
+    return list(arr_top_k_id)
+
+
+def beam_search(num_of_cache, all_apps, p_c_t, times, end_condition=30):
+    # TODO：从各个子bandit中选出top_k的配置，并进行组合，形成全局的配置
+    action = {}.fromkeys(all_apps)
+    num_app = len(all_apps)
+    top_k = int(10 ** (np.log10(end_condition) / num_app))
+
+    cache_top_k = [get_top_k(p_c_t[all_apps[i]], top_k, times) for i in range(num_app)]
+    feasible_configs = gen_feasible_configs(num_of_cache=num_of_cache, cache_top_k=cache_top_k)
+    sum_p_list = []
+    for config in feasible_configs:
+        try:
+            config_p = [p_c_t[all_apps[i]][config[i]] for i in range(num_app)]
+            sum_p = sum(config_p)
+            sum_p_list.append(sum_p)
+        except IndexError as e:
+            print(f"Caught an IndexError: {e}")
+            print(config)
+            print(cache_top_k)
+    cache_act = feasible_configs[np.argmax(sum_p_list)]
+    for i in range(num_app):
+        action[all_apps[i]] = cache_act[i]
+    return action
+
+
+class LinUCB(ScheduleFrame):
+    def __init__(self, all_apps, n_cache, alpha, factor_alpha, n_features):
+        super().__init__()
+        self.all_apps = all_apps
+        self.num_apps = len(all_apps)
+        self.n_arms = n_cache + 1
         self.n_features = n_features
-        self.A = np.array([np.identity(n_features) for _ in range(n_arms)])
-        self.b = np.array([np.zeros(n_features) for _ in range(n_arms)])
+        self.alpha = alpha
+        self.factor_alpha = factor_alpha
+        self.times = 0
 
-    def select_arm(self, context, factor_alpha):
-        p = np.zeros(self.n_arms)
-        self.alpha *= factor_alpha
-        
-        # print("n_arms:")
-        # print(self.n_arms)
+        self.A_c = {}
+        self.b_c = {}
+        self.p_c_t = {}
 
-        for arm in range(self.n_arms):
-            A_inv = np.linalg.inv(self.A[arm])
-            theta = np.dot(A_inv, self.b[arm])
-            p[arm] = np.dot(theta.T, context) + self.alpha * np.sqrt(np.dot(context.T, np.dot(A_inv, context)))
-        return np.argmax(p)
+        for app in self.all_apps:
+            self.A_c[app] = np.zeros((self.n_arms, self.n_features * 2, self.n_features * 2))
+            self.b_c[app] = np.zeros((self.n_arms, self.n_features * 2, 1))
+            self.p_c_t[app] = np.zeros(self.n_arms)
+            for arm in range(self.n_arms):
+                self.A_c[app][arm] = np.eye(self.n_features * 2)
 
-    def update(self, chosen_arm, reward, context):
-        self.A[chosen_arm] += np.outer(context, context)
-        self.b[chosen_arm] += reward * context
+        # contexts
+        self.context = {}
+        self.other_context = {}
+        sum = np.zeros(n_features)
+        for app in self.all_apps:
+            self.context[app] = [1.0 for _ in range(self.n_features)]
+            sum += np.array(self.context[app])
+        for app in self.all_apps:
+            self.other_context[app] = list((sum - np.array(self.context[app])) / (len(self.all_apps) - 1))
 
-def gen_all_config(num_apps, num_resources):
-    '''
-    generate all resource config according to the number of apps and total resources
-
-    Args:
-        num_apps (int): number of apps
-        num_resources (int): total units of resources
-
-    Returns:
-        list<list>: a list containing all possible config, which is list<int>
-    '''
-    if num_apps == 1:
-        # Only one app, it get all remaining resources
-        return [[num_resources]]
-    
-    all_config = []
-    for i in range(num_resources + 1):
-        # Recursively allocate the remaining resources among the remaining app
-        for sub_allocation in gen_all_config(num_apps - 1, num_resources - i):
-            all_config.append([i] + sub_allocation)
-    return all_config
-
-def get_now_reward(curr_metrics):
-    '''
-    Get a default context and average reward
-
-    Args:
-        curr_metrics (list<float>): a feedback metric representing the current mixed deployment status for each app
-
-    Returns:
-        list<float>: context infomation, initialize as a list of 18 elements, each set to 1.0
-        float: th_reward, the average reward calculated based on the current metrics
-    '''
-    context = [1.0 for _ in range(18)]
-    th_reward = sum(float(x) for x in curr_metrics)/len(curr_metrics)
-    return context, th_reward
-
-def find_vectors(x, d_max):
-    n = len(x)
-    S = sum(x)
-    solutions = []
-
-    def backtrack(current_vector, index, current_distance):
-        if current_distance > d_max or any(val < 0 for val in current_vector):
-            return
-        if index == n:
-            if sum(current_vector) == S:
-                solutions.append(list(current_vector))
-            return
-        for delta in range(-d_max, d_max + 1):
-            current_vector[index] += delta
-            new_distance = current_distance + abs(delta)
-            backtrack(current_vector, index + 1, new_distance)
-            current_vector[index] -= delta
-
-    initial_vector = x.copy()
-    backtrack(initial_vector, 0, 0)
-    return solutions
-
-
-class EpsilonGreedy:
-    def __init__(self, epsilon, factor_alpha, num_apps, num_resources):
-        self.init_factor = [epsilon, factor_alpha, 0.95, 0.98]
-        self.epsilon = self.init_factor[0]
-        self.factor_alpha = self.init_factor[1]
-        self.all_cache_config = gen_all_config(num_apps, num_resources)
-        self.n_arms = len(self.all_cache_config)
-
-        # 探索过程随机探索与邻近探索的比例
-        self.sub_epsilon = self.init_factor[2]
-        self.sub_alpha = self.init_factor[3]
-        # 邻近探索的曼哈顿距离
-        self.dmax = 10
-
-        self.counts = np.zeros(self.n_arms)
-        self.values = np.zeros(self.n_arms)
-        self.neighbour = {}
-        self.last_reward = [-1] * self.n_arms
-
-        # 并行加速搜索临近配置的过程
-        st_time = time.time()
-        # for i in range(self.n_arms):
-        #     self.neighbour[i] = find_vectors(self.all_cache_config[i], self.dmax)
-        all_threads = []
-        parts_neighbour = []
-        num_tasks = self.n_arms // 10
-        with Manager() as manager:
-            parts_neighbour.append(manager.dict())
-            for i in range(0, self.n_arms, num_tasks):
-                all_threads.append(Process(target=self.find_neighbours, args=(i, min(i + num_tasks, self.n_arms), parts_neighbour[-1])))
-                all_threads[-1].start()
-            for i in range(len(all_threads)):
-                all_threads[i].join()
-            for i in range(len(parts_neighbour)):
-                self.neighbour.update(parts_neighbour[i])
-        en_time = time.time()
-        print('construct neighbour :{}'.format(en_time - st_time))
-
-    def find_neighbours(self, start, end, part_neighbour):
-        # 并行执行
-        start_time = time.time()
-        for i in range(start, end):
-            part_neighbour[i] = find_vectors(self.all_cache_config[i], self.dmax)
-        end_time = time.time()
-        # print('----- find_neighbour, from {} to {}, Used Time: {}'.format(start, end, end_time - start_time))
+        return
 
     def select_arm(self):
-        if np.random.rand() < self.epsilon:
-            # 探索
-            self.epsilon *= self.factor_alpha
-            if np.random.rand() < self.sub_epsilon:
-                # 随机探索
-                self.sub_epsilon *=self.sub_alpha
-                chosen_arm = np.random.randint(self.n_arms)
-            else:
-                # 最优点临近探索
-                curr_max = np.argmax(self.values)
-                num_neighbours = len(self.neighbour[int(curr_max)])
-                chosen = random.randint(0, num_neighbours - 1)
-                chosen_arm = self.all_cache_config.index(self.neighbour[int(curr_max)][chosen])
-        else:
-            # 利用
-            chosen_arm = np.argmax(self.values)
+        contexts = {}
+        for app in self.all_apps:
+            A = self.A_c[app]
+            b = self.b_c[app]
+            contexts[app] = np.hstack((self.context[app], self.other_context[app]))
 
-        return chosen_arm, self.all_cache_config[chosen_arm]
+            for i in range(self.n_arms):
+                theta = np.linalg.inv(A[i]).dot(b[i])
+                cntx = np.array(contexts[app])
+                self.p_c_t[app][i] = theta.T.dot(cntx) + self.alpha * np.sqrt(cntx.dot(np.linalg.inv(A[i]).dot(cntx)))
 
-    def update(self, chosen_arm_index, reward):
-        last_reward = self.last_reward[chosen_arm_index]
-        if last_reward > 0 and float(abs(reward - last_reward)) / last_reward > 0.05:
-            # workload change
-            print('-----judge workload change, {}'.format(float(abs(reward - last_reward)) / last_reward))
-            self.last_reward = [-1] * self.n_arms
-            self.counts = np.zeros(self.n_arms)
-            self.values = np.zeros(self.n_arms)
-            self.epsilon = self.init_factor[0]
-            self.sub_epsilon = self.init_factor[2]
+        cache_action = beam_search(self.n_arms - 1, self.all_apps, self.p_c_t, self.times, end_condition=30)
+        self.times += 1
+        # cache_action is a dict
+        cache_allocation = []
+        for app in self.all_apps:
+            cache_allocation.append(cache_action[app])
+        self.alpha *= self.factor_alpha
+        return cache_allocation
 
-        self.counts[chosen_arm_index] += 1
-        n = self.counts[chosen_arm_index]
-        value = self.values[chosen_arm_index]
-        new_value = ((n - 1) / n) * value + (1 / n) * reward
-        self.values[chosen_arm_index] = new_value
-        self.last_reward[chosen_arm_index] = reward
+    def update(self, reward, chosen_arm):
+        contexts = {}
+        for app in self.all_apps:
+            arm = chosen_arm[app]
+            contexts[app] = np.hstack((self.context[app], self.other_context[app]))
+            self.A_c[app][arm] += np.outer(np.array(contexts[app]), np.array(contexts[app]))
+            self.b_c[app][arm] = np.add(self.b_c[app][arm].T, np.array(contexts[app]) * reward).reshape(self.n_features * 2, 1)
+
+    def get_now_reward(self, performance, context_info=None):
+        # update the context
+        tmp = [list(row) for row in zip_longest(*context_info, fillvalue=None)]
+        sum_context = np.zeros(self.n_features)
+        for i, app in enumerate(self.all_apps):
+            self.context[app] = tmp[i]
+            sum_context += np.array(self.context[app])
+        for app in self.all_apps:
+            self.other_context[app] = list((sum_context - np.array(self.context[app])) / (len(self.all_apps) - 1))
+        # calculate the reward
+        th_reward = sum(float(x) for x in performance) / len(performance)
+        return th_reward
 
 
 if __name__ == '__main__':
-    num_tasks = 29055 // 10 if 29055 % 10 == 0 else 29055 // 10 + 1
-    print(num_tasks)
+    pass
