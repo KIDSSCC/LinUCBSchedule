@@ -18,10 +18,11 @@ if __name__ == '__main__':
     plt.plot(index, reward)
     plt.plot(index, target)
     plt.plot(index, init_score)
-    plt.axvline(x=2500, color='red', linestyle='--')
-    plt.axvline(x=5000, color='red', linestyle='--')
+    plt.axvline(x=1000, color='red', linestyle='--')
+    plt.axvline(x=2000, color='red', linestyle='--')
     # 设置刻度
     plt.xticks(list(range(0, int(index[-1]), int(int(index[-1])/20))))
     plt.yticks([i * 0.2 for i in range(0, int(best_score // 0.2) + 2, 1)])
+    plt.title('OLUCB')
     plt.show()
 

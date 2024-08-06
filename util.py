@@ -207,15 +207,15 @@ class simulation_config_management:
     def __init__(self):
         self.total_resource = 240
         self.all_user = [
-            userModel('A', 0, uniform),
-            userModel('B', 0, hotspot),
-            userModel('C', 0, sequential),
+            userModel('A', 0, sequential),
+            userModel('B', 0, uniform),
+            userModel('C', 0, hotspot),
         ]
         for u in self.all_user:
             u.resources = self.total_resource // len(self.all_user)
 
         self.n_features = 10
-        self.workload_change = 2500
+        self.workload_change = 1000
         self.counter = 0
 
     def receive_config(self):
