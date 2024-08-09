@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 import numpy as np
-from scipy.special import gamma
+
 
 class ScheduleFrame:
     def __init__(self):
