@@ -8,14 +8,37 @@ class ScheduleFrame:
 
     @abstractmethod
     def select_arm(self):
+        """
+        Make a decision, select a new resource allocation
+        Returns:
+            list<int>: new allocation for every task, e.g. [15, 8, 7]
+        """
         pass
 
     @abstractmethod
     def update(self, reward, chosen_arm):
+        """
+        update the parameter matrix according to the reward
+        Args:
+            reward float: reward value according to the performance, bigger is greater
+            chosen_arm dict<taskname -> allocation: current resource allocation
+
+        Returns:
+
+        """
         pass
 
     @abstractmethod
     def get_now_reward(self, performance, context_info=None):
+        """
+        update the context and calculate the reward according to the performance
+        Args:
+            performance list<float>: performacne of every task, may be hitrate, latency, and so on
+            context_info list<list<float>>: context of current environment
+
+        Returns:
+            float: A reward value calculated based on performance metrics
+        """
         pass
 
 

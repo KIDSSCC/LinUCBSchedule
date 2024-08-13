@@ -30,7 +30,7 @@ def simulation():
 
 
 def proto_system():
-    log_name = '0813.log'
+    log_name = '0813_2.log'
     index = []
     reward = []
     count = 1
@@ -43,15 +43,15 @@ def proto_system():
     reward = [float(i) for i in reward]
     result = reward[-10:]
     result = sum(result) / len(result)
-    baseline_time = 170.36
+    baseline_time = 460.76
     print('average result: {}'.format(result))
     print('lifting range: {}'.format((baseline_time - result) / baseline_time) )
     baseline = [baseline_time] * len(index)
     plt.plot(index, reward, label='OLUCB')
     plt.plot(index, baseline, label='baseline')
     # 设置刻度
-    plt.xticks(list(range(0, int(index[-1]), int(int(index[-1]) / 20))))
-    plt.yticks(list(range(100, int(max(reward) + 20), 20)))
+    plt.xticks(list(range(0, int(index[-1]) + 1, int(int(index[-1]) / 20))))
+    plt.yticks(list(range(200, int(max(reward) + 20), 20)))
     plt.title('ProtoSystem Colocation')
     plt.legend()
     plt.show()
