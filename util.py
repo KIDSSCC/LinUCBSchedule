@@ -1,8 +1,10 @@
 import socket
-import pickle
 import time
+import subprocess
+from ScheduleFrame import ConfigManagement
 
 
+cgroup_path = '/sys/fs/cgroup/blkio/'
 host = '127.0.0.1'
 port = 54000
 
@@ -20,7 +22,7 @@ def get_last_line(file_name):
     try:
         with open(file_name, 'rb') as file:
             file.seek(-2,2)
-            while file.read(1)!=b'\n':
+            while file.read(1) != b'\n':
                 file.seek(-2, 1)
             return file.readline().decode().strip()
     except FileNotFoundError:
@@ -34,7 +36,7 @@ def get_pool_stats():
     Args:
 
     Returns:
-        map<poolname->poolsize>: all pool in the cache and their pool size
+        map<poolName -> poolSize>: all pool in the cache and their pool size
     """
     # link the target program
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -55,6 +57,31 @@ def get_pool_stats():
         deserialized_map[key] = int(value)
     
     return deserialized_map
+
+
+def clear_groups():
+    """
+    delete existing blkio groups
+    Args:
+
+    Returns:
+    """
+    command = 'ls -d ' + cgroup_path + '*/'
+    print(command)
+    result = subprocess.run(command, shell=True, text=True, capture_output=True)
+    stdout = result.stdout
+    if 'cannot' in stdout or "" == stdout:
+        # no groups
+        # print('no groups need to clear')
+        return
+    all_groups = stdout.strip().split('\n')
+    all_groups = [line.replace(cgroup_path, "")[:-1] for line in all_groups]
+    num = len(all_groups)
+    for group in all_groups:
+        delete_command = 'cgdelete -r blkio:' + group
+        print(delete_command)
+        subprocess.run(delete_command, shell=True, text=True, capture_output=False)
+    # print('clear {} groups'.format(num))
 
 
 def set_cache_size(workloads, cache_size):
@@ -81,63 +108,44 @@ def set_cache_size(workloads, cache_size):
     sock.close()
 
 
-def receive_config():
+def set_bandwidth(procs, bandwidths):
     """
-    Old version, Wait to receive the current resource config
-
+    Communicating with OS cgroup blkio, adjust bandwidth
     Args:
+        procs (list<str>): pid of all workloads
+        bandwidths (list<int>): new bandwidth of every workload
 
     Returns:
-        list: [
-            [name of pool],
-            [allocation of resource A of every pool], # such as cache size,[16,16]
-            [context of resource A of every pool ], # for cache size ,context canbe hit_rate,[0.8254, 0.7563]
-            [latency of every warkload]
-        ]
+
     """
-    # create the server socket
-    # print("receive config")
-    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    server_socket.bind(('127.0.0.1', 1412))
-    server_socket.listen(1)
-    
-    # listening the old_config from the executor
-    client_socket, _ = server_socket.accept()
-    received_data = client_socket.recv(1024)
-    config = pickle.loads(received_data)
-    
-    client_socket.close()
-    server_socket.close()
-    return config
+    for i in range(len(procs)):
+        group_name = 'group_' + str(procs[i])
+        # check the group exist
+        check_command = 'cgget -g blkio:' + group_name
+        # print(check_command)
+        check_res = subprocess.run(check_command, shell=True, text=True, capture_output=True)
+        if 'cannot' in check_res.stderr:
+            # group non-exist,need to create new group
+            print('{} non-exist'.format(group_name))
+            # create new group
+            create_command = 'cgcreate -g blkio:' + group_name
+            # print(create_command)
+            subprocess.run(create_command, shell=True, text=True, capture_output=False)
+            # add proc to group
+            classify_command = 'cgclassify -g blkio:' + group_name + ' ' + str(procs[i])
+            # print(classify_command)
+            subprocess.run(classify_command, shell=True, text=True, capture_output=False)
+        # adjust the weigh
+        adjust_command = 'cgset -r blkio.throttle.read_bps_device="8:16 ' + \
+                         str(bandwidths[i] * 102400) + \
+                         '" ' + group_name
+        # print(adjust_command)
+        subprocess.run(adjust_command, shell=True, text=True, capture_output=False)
 
 
-def send_config(new_config):
-    """
-    Old version, Send the new config
-
-    Args:
-        list: [
-            [name of pool],
-            [new allocation of resource A of every pool]
-        ]
-
-    Returns:
-    """
-    serialized_config = pickle.dumps(new_config)
-
-    # connect to the bench
-    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    client_socket.connect(('127.0.0.1', 1413))
-    client_socket.send(serialized_config)
-    client_socket.close()
-    print("send_config success!")
-    return
-
-
-class config_management:
+class ProtoSystemManagement(ConfigManagement):
     def __init__(self) -> None:
-        pass
+        super().__init__()
 
     def receive_config(self):
         curr_config = []
@@ -147,45 +155,31 @@ class config_management:
         pool_size = list(pool_and_size.values())
         curr_config.append(pool_name)
         curr_config.append(pool_size)
-        #TODO: cache hit rate
-        hitrate_log = ['/home/md/SHMCachelib/bin/' + name + '_hitrate.log' for name in pool_name]
-        hitrates = []
-        for log in hitrate_log:
-            hitrates.append(get_last_line(log))
-        curr_config.append(hitrates)
-        #TODO: tail latency
-        latency_log = ['/home/md/SHMCachelib/bin/' + name + '_tailLatency.log' for name in pool_name]
-        latencies = []
-        for log in latency_log:
-            latencies.append(get_last_line(log))
-        curr_config.append(latencies)
-
+        # performance
+        sub_item_log = ['/home/md/SHMCachelib/bin/0809/' + name + '_subItem.log' for name in pool_name]
+        performance = []
+        for log in sub_item_log:
+            last_line = None
+            while last_line is None or last_line == '':
+                if last_line is None:
+                    last_line = get_last_line(log)
+                else:
+                    time.sleep(10)
+                    last_line = get_last_line(log)
+            performance.append(last_line)
+        curr_config.append(performance)
+        # context
+        n_features = 10
+        for _ in range(n_features):
+            curr_config.append([1.0] * len(pool_name))
         return curr_config
 
     def send_config(self, new_config):
         set_cache_size(new_config[0], new_config[1])
 
 
-def userA_func(resources, threshold):
-    if threshold < 0:
-        return 0
-    if resources < threshold:
-        return resources * 0.095
-    else:
-        return threshold * 0.095 + (resources - threshold) * 0.010
-
-
-def userB_func(resources, threshold):
-    if threshold < 0:
-        return 0
-    if resources < threshold:
-        return resources * 0.040
-    else:
-        return threshold * 0.040 + (resources - threshold) * 0.005
-
-
 def uniform(resources):
-    return min(resources, 240) * 0.003
+    return min(resources, 120) * 0.015
 
 
 def sequential(resources):
@@ -193,37 +187,41 @@ def sequential(resources):
 
 
 def hotspot(resources):
-    return min(resources, 60) * 0.007 + min(max(0, resources - 60), 180) * 0.002
+    return min(resources, 30) * 0.035 + min(max(0, resources - 30), 60) * 0.01
 
 
-class userModel:
+class UserModel:
     def __init__(self, name, resources=0, user_func=None):
         self.name = name
         self.resources = resources
         self.user_func = user_func
 
 
-class simulation_config_management:
+class SimulationManagement(ConfigManagement):
     def __init__(self):
-        self.total_resource = 240
+        super().__init__()
+        self.total_resource = 113
         self.all_user = [
-            userModel('A', 0, sequential),
-            userModel('B', 0, uniform),
-            userModel('C', 0, hotspot),
+            UserModel('A', 0, sequential),
+            UserModel('B', 0, uniform),
+            UserModel('C', 0, hotspot),
+            UserModel('D', 0, sequential),
+            UserModel('E', 0, hotspot),
         ]
         for u in self.all_user:
             u.resources = self.total_resource // len(self.all_user)
 
         self.n_features = 10
-        self.workload_change = 1000
+        self.workload_change = -1
         self.counter = 0
 
     def receive_config(self):
-        curr_config = []
+        curr_config = [
+            [u.name for u in self.all_user],
+            [u.resources for u in self.all_user],
+            [u.user_func(u.resources) for u in self.all_user]
+        ]
 
-        curr_config.append([u.name for u in self.all_user])
-        curr_config.append([u.resources for u in self.all_user])
-        curr_config.append([u.user_func(u.resources) for u in self.all_user])
         # context info
         for i in range(self.n_features):
             curr_config.append([1.0] * len(self.all_user))
@@ -241,8 +239,4 @@ class simulation_config_management:
 
 
 if __name__ == '__main__':
-    time.sleep(10)
-    cs = config_management()
-    curr = cs.receive_config()
-    for item in curr:
-        print(item)
+    pass

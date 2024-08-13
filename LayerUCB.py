@@ -117,42 +117,25 @@ def latin_hypercube_sampling(n, d, m, M, ratio):
     return sample_config
 
 
-class LinUCB(ScheduleFrame):
-    def __init__(self, all_apps, n_cache, alpha, factor_alpha, n_features, sample=False):
+class LayerUCB(ScheduleFrame):
+    def __init__(self, all_apps, n_cache, alpha, factor_alpha, n_features):
         super().__init__()
         self.all_apps = all_apps
         self.num_apps = len(all_apps)
-        self.n_arms = n_cache + 1
+        self.arm_dict = {}
+        for app in self.all_apps:
+            self.arm_dict[app] = list(range(0, n_cache, 5))
         self.n_features = n_features
-
-        self.init_factor = [alpha, factor_alpha]
-        self.alpha = self.init_factor[0]
-        self.factor_alpha = self.init_factor[0]
-
-        self.times = 0
-        self.sampling_model = sample
-        self.sample_result = []
-        self.sample_config = None
-        self.sample_times = 10
-        self.ratio = 10
-
-        self.curr_best_config = None
-        self.curr_best_reward = None
-        self.duration_period = 0
-        self.threshold = 150
-        self.probability_threshold = 90
-
-        self.history_reward = []
 
         self.A_c = {}
         self.b_c = {}
         self.p_c_t = {}
 
         for app in self.all_apps:
-            self.A_c[app] = np.zeros((self.n_arms, self.n_features * 2, self.n_features * 2))
-            self.b_c[app] = np.zeros((self.n_arms, self.n_features * 2, 1))
-            self.p_c_t[app] = np.zeros(self.n_arms)
-            for arm in range(self.n_arms):
+            self.A_c[app] = np.zeros((len(self.arm_dict[app]), self.n_features * 2, self.n_features * 2))
+            self.b_c[app] = np.zeros((len(self.arm_dict[app]), self.n_features * 2, 1))
+            self.p_c_t[app] = np.zeros(len(self.arm_dict[app]))
+            for arm in range(len(self.arm_dict[app])):
                 self.A_c[app][arm] = np.eye(self.n_features * 2)
 
         # contexts
@@ -165,9 +148,6 @@ class LinUCB(ScheduleFrame):
         for app in self.all_apps:
             self.other_context[app] = list((sum - np.array(self.context[app])) / (len(self.all_apps) - 1))
 
-        # Hypercube Sampling
-        if self.sampling_model:
-            self.sample_config = latin_hypercube_sampling(self.sample_times, self.num_apps, 0, (self.n_arms - 1)//self.ratio, self.ratio)
         return
 
     def select_arm(self):
@@ -184,7 +164,7 @@ class LinUCB(ScheduleFrame):
             return cache_allocation
 
         self.times += 1
-        if self.duration_period > self.threshold and random.randint(1, 100) < self.probability_threshold:
+        if self.duration_period > self.threshold and random.randint(1, 10) < 8:
             cache_allocation = []
             for app in self.all_apps:
                 cache_allocation.append(self.curr_best_config[app])
@@ -251,7 +231,7 @@ class LinUCB(ScheduleFrame):
                         print('----- test workload change -----')
                         self.reset()
                     else:
-                        self.history_reward.pop(0)
+                        self.history_reward = second_half
 
     def get_now_reward(self, performance, context_info=None):
         # update the context
@@ -262,13 +242,9 @@ class LinUCB(ScheduleFrame):
             sum_context += np.array(self.context[app])
         for app in self.all_apps:
             self.other_context[app] = list((sum_context - np.array(self.context[app])) / (len(self.all_apps) - 1))
-
-        # calculate the reward for hitrate etc bigger is greater
-        # th_reward = sum(float(x) for x in performance) / len(performance)
-        # smaller is greater
-        aver_latency = sum(float(x) for x in performance) / len(performance)
-        th_reward = 100 / aver_latency
-        return th_reward, aver_latency
+        # calculate the reward
+        th_reward = sum(float(x) for x in performance) / len(performance)
+        return th_reward
 
     def reset(self):
         self.alpha = self.init_factor[0]

@@ -19,6 +19,41 @@ class ScheduleFrame:
         pass
 
 
+class ConfigManagement:
+    def __init__(self):
+        pass
+
+    @abstractmethod
+    def receive_config(self):
+        """
+        get information of tasks, current allocation, performance, context from client
+        Returns:
+            list: [
+                [name of tasks]                             # ['userA', 'userB', 'userC']
+                [allocation of resource A for every task]   # [10, 10, 10]
+                [performance of every task]                 # [0.21, 0.54, 0.65]
+                [feature1 of every task]                    # [feature1_A, feature1_B, feature1_C] e.g.
+                [feature2 of every task]                    # [feature2_A, feature2_B, feature2_C] e.g.
+                ......
+                [featureN of every task]
+            ]
+        """
+        pass
+
+    @abstractmethod
+    def send_config(self, new_config):
+        """
+        set new allocation in client
+        Args:
+            new_config (list): [
+                [name of tasks],                                # ['userA', 'userB', 'userC']
+                [new allocation of resource A for every task]   # [15, 8, 7]
+            ]
+        Returns:
+        """
+        pass
+
+
 def latin_hypercube_sampling(n, d, m, M):
     # Initialize the samples array
     samples = np.zeros((n, d))
