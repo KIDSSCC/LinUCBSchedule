@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import re
 
+
 def simulation():
     log_name = 'linucb.log'
     index = []
@@ -8,9 +9,10 @@ def simulation():
     count = 1
     with open(log_name, 'r') as log_file:
         for line in log_file.readlines():
-            idx, rew = line.split(' ')
-            index.append(idx)
-            reward.append(rew)
+            line = line.rstrip('\n')
+            token = re.split(r'[: ]+', line)
+            index.append(token[1])
+            reward.append(token[-2])
     reward = [float(i) for i in reward]
     best_score = 0.579
     target = [best_score] * len(index)
@@ -58,4 +60,5 @@ def proto_system():
 
 
 if __name__ == '__main__':
-    proto_system()
+    # proto_system()
+    simulation()

@@ -109,7 +109,7 @@ def for_linucb_sample():
     alpha = 0.95
     factor_alpha = 0.98
     n_features = 10
-    epochs = 500
+    epochs = 3000
     ucb_cache = LinUCB(all_app, 113, alpha, factor_alpha, n_features, True)
 
     file_ = open('linucb.log', 'w', newline='')
@@ -135,10 +135,10 @@ def for_linucb_sample():
         ucb_cache.update(th_reward, chosen_arm)
 
         # write to log
-        log_info = 'epoch:{}: {}, {}, {}\n'.format(i, str(curr_allocate), th_reward, aver_latency)
-        print(log_info)
+        log_info = 'epoch:{}: {} {} {}\n'.format(i, str(curr_allocate), th_reward, aver_latency)
+        # print(log_info)
         file_.write(log_info)
-        if (i + 1) % 5 == 0:
+        if (i + 1) % 100 == 0:
             print('epoch [{} / {}]'.format(i + 1, epochs))
 
     end_time = time.time()

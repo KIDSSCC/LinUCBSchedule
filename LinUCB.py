@@ -1,5 +1,4 @@
 import random
-import numpy as np
 from itertools import zip_longest
 from ScheduleFrame import *
 
@@ -264,10 +263,11 @@ class LinUCB(ScheduleFrame):
             self.other_context[app] = list((sum_context - np.array(self.context[app])) / (len(self.all_apps) - 1))
 
         # calculate the reward for hitrate etc bigger is greater
-        # th_reward = sum(float(x) for x in performance) / len(performance)
+        th_reward = sum(float(x) for x in performance) / len(performance)
         # smaller is greater
-        aver_latency = sum(float(x) for x in performance) / len(performance)
-        th_reward = 100 / aver_latency
+        # aver_latency = sum(float(x) for x in performance) / len(performance)
+        # th_reward = 100 / aver_latency
+        aver_latency = 0
         return th_reward, aver_latency
 
     def reset(self):
