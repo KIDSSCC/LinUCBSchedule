@@ -1,4 +1,5 @@
 import random
+import config
 from itertools import zip_longest
 from ScheduleFrame import *
 
@@ -130,17 +131,19 @@ class LinUCB(ScheduleFrame):
 
         self.times = 0
         self.sampling_model = sample
-        self.sample_result = []
+        self.sample_result = {}
         self.sample_config = None
-        self.sample_times = 10
-        self.ratio = 10
+        self.sample_times = config.SAMPLE_TIMES
+        self.ratio = config.SAMPLE_RATIO
 
         self.curr_best_config = None
         self.curr_best_reward = None
         self.duration_period = 0
-        self.threshold = 150
-        self.probability_threshold = 90
+        self.threshold = config.APPROXIMATE_CONVERGENCE_THRESHOLD
+        self.probability_threshold = config.PROBABILITY_THRESHOLD
 
+        self.load_change_threshold = config.LOAD_CHANGE_THRESHOLD
+        self.history_reward_window = config.HISTORY_REWARD_WINDOW
         self.history_reward = []
 
         self.A_c = {}
@@ -175,8 +178,8 @@ class LinUCB(ScheduleFrame):
                 # sample end
                 self.times += 1
                 self.sampling_model = False
-                # print(max(self.sample_result))
-                return self.sample_config[self.sample_result.index(max(self.sample_result))]
+                max_sample_config = list(max(self.sample_result, key=self.sample_result.get))
+                return max_sample_config
             # initial phase
             cache_allocation = self.sample_config[self.times]
             self.times += 1
@@ -213,7 +216,8 @@ class LinUCB(ScheduleFrame):
     def update(self, reward, chosen_arm):
         if self.sampling_model:
             # initial phase
-            self.sample_result.append(float(reward))
+            curr_config = tuple(chosen_arm.values())
+            self.sample_result[curr_config] = float(reward)
         else:
             if self.curr_best_config is None:
                 self.curr_best_config = chosen_arm
@@ -236,12 +240,13 @@ class LinUCB(ScheduleFrame):
                 self.A_c[app][arm] += np.outer(np.array(contexts[app]), np.array(contexts[app]))
                 self.b_c[app][arm] = np.add(self.b_c[app][arm].T, np.array(contexts[app]) * reward).reshape(self.n_features * 2, 1)
 
-            if self.times > 200:
-                if len(self.history_reward) < 60:
-                    self.history_reward.append(round(float(reward), 3))
+            if self.times > self.load_change_threshold:
+                if len(self.history_reward) < self.history_reward_window:
+                    self.history_reward.append(float(reward))
                 else:
-                    first_half = self.history_reward[:30]
-                    second_half = self.history_reward[30:]
+                    half_window = self.history_reward_window // 2
+                    first_half = self.history_reward[:half_window]
+                    second_half = self.history_reward[half_window:]
                     first_aver = sum(first_half) / len(first_half)
                     second_aver = sum(second_half) / len(second_half)
                     # print('{} --> {},  {}'.format(first_aver, second_aver, abs(second_aver - first_aver) / first_aver))
@@ -264,18 +269,20 @@ class LinUCB(ScheduleFrame):
 
         # calculate the reward for hitrate etc bigger is greater
         th_reward = sum(float(x) for x in performance) / len(performance)
+        return th_reward
+
         # smaller is greater
         # aver_latency = sum(float(x) for x in performance) / len(performance)
         # th_reward = 100 / aver_latency
-        aver_latency = 0
-        return th_reward, aver_latency
+        # return th_reward, aver_latency
+
 
     def reset(self):
         self.alpha = self.init_factor[0]
         self.times = 0
         self.sampling_model = True
-        self.sample_config = latin_hypercube_sampling(20, self.num_apps, 0, (self.n_arms - 1)//self.ratio, self.ratio)
-        self.sample_result = []
+        self.sample_config = latin_hypercube_sampling(self.sample_times, self.num_apps, 0, (self.n_arms - 1)//self.ratio, self.ratio)
+        self.sample_result = {}
 
         self.curr_best_config = None
         self.curr_best_reward = None
@@ -292,4 +299,7 @@ class LinUCB(ScheduleFrame):
 
 
 if __name__ == '__main__':
+    mylist = [1, 2, 3, 4, 5, 6]
+    mylist2 = [1, 2, 3, 4, 5]
+    print(mylist2[mylist.index(max(mylist))])
     pass

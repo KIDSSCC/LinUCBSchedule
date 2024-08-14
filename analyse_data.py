@@ -6,7 +6,6 @@ def simulation():
     log_name = 'linucb.log'
     index = []
     reward = []
-    count = 1
     with open(log_name, 'r') as log_file:
         for line in log_file.readlines():
             line = line.rstrip('\n')
