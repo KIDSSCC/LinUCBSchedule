@@ -1,3 +1,4 @@
+import pickle
 import random
 import config
 from itertools import zip_longest
@@ -296,6 +297,15 @@ class LinUCB(ScheduleFrame):
             self.p_c_t[app] = np.zeros(self.n_arms)
             for arm in range(self.n_arms):
                 self.A_c[app][arm] = np.eye(self.n_features * 2)
+
+    def save_to_pickle(self, filename):
+        with open(filename, 'wb') as f:
+            pickle.dump(self, f)
+
+    @staticmethod
+    def load_from_pickle(filename):
+        with open(filename, 'rb') as f:
+            return pickle.load(f)
 
 
 if __name__ == '__main__':

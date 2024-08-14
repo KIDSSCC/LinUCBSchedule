@@ -61,6 +61,10 @@ def for_linucb():
     file_ = open('linucb.log', 'w', newline='')
     start_time = time.time()
     for i in range(epochs):
+        if i == 1500:
+            print('save and load')
+            ucb_cache.save_to_pickle('OLUCB.pkl')
+            ucb_cache = LinUCB.load_from_pickle('OLUCB.pkl')
         curr_allocate = curr_config[1]
         performance = curr_config[2]
         context_info = curr_config[3:]
@@ -82,6 +86,7 @@ def for_linucb():
         curr_config = cm.receive_config()
 
         # write to log
+        aver_latency = 0
         log_info = 'epoch:{}: {} {} {}\n'.format(i, str(curr_allocate), th_reward, aver_latency)
         # print(log_info)
         file_.write(log_info)
