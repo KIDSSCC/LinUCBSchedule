@@ -49,8 +49,8 @@ def for_linucb():
     cm = SimulationManagement()
     curr_config = cm.receive_config()
 
-    all_app = curr_config[0]
-    num_resources = int(np.sum(curr_config[1]))
+    all_app = curr_config.task_id
+    num_resources = int(np.sum(curr_config.resource_allocation))
 
     alpha = 0.95
     factor_alpha = 0.98
@@ -65,9 +65,9 @@ def for_linucb():
             print('save and load')
             ucb_cache.save_to_pickle('OLUCB.pkl')
             ucb_cache = LinUCB.load_from_pickle('OLUCB.pkl')
-        curr_allocate = curr_config[1]
-        performance = curr_config[2]
-        context_info = curr_config[3:]
+        curr_allocate = curr_config.resource_allocation
+        performance = curr_config.performance
+        context_info = curr_config.context
         chosen_arm = {}
         for j in range(len(all_app)):
             chosen_arm[all_app[j]] = curr_allocate[j]
@@ -77,7 +77,7 @@ def for_linucb():
 
         new_arm = ucb_cache.select_arm()
         # prepare new config
-        new_config = [curr_config[0], new_arm]
+        new_config = [curr_config.task_id, new_arm]
         cm.send_config(new_config)
 
         # waiting for result

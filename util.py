@@ -1,7 +1,7 @@
 import socket
 import time
 import subprocess
-from ScheduleFrame import ConfigManagement
+from ScheduleFrame import ConfigManagement, ConfigPackage
 
 
 cgroup_path = '/sys/fs/cgroup/blkio/'
@@ -148,13 +148,13 @@ class ProtoSystemManagement(ConfigManagement):
         super().__init__()
 
     def receive_config(self):
-        curr_config = []
+        curr_config = ConfigPackage()
         # pool name and cache allocation
         pool_and_size = get_pool_stats()
         pool_name = list(pool_and_size.keys())
         pool_size = list(pool_and_size.values())
-        curr_config.append(pool_name)
-        curr_config.append(pool_size)
+        curr_config.task_id = pool_name
+        curr_config.resource_allocation = pool_size
         # performance
         sub_item_log = ['/home/md/SHMCachelib/bin/0809/' + name + '_subItem.log' for name in pool_name]
         performance = []
@@ -167,11 +167,11 @@ class ProtoSystemManagement(ConfigManagement):
                     time.sleep(10)
                     last_line = get_last_line(log)
             performance.append(last_line)
-        curr_config.append(performance)
+        curr_config.performance = performance
         # context
         n_features = 10
         for _ in range(n_features):
-            curr_config.append([1.0] * len(pool_name))
+            curr_config.context.append([1.0] * len(pool_name))
         return curr_config
 
     def send_config(self, new_config):
@@ -216,15 +216,13 @@ class SimulationManagement(ConfigManagement):
         self.counter = 0
 
     def receive_config(self):
-        curr_config = [
-            [u.name for u in self.all_user],
-            [u.resources for u in self.all_user],
-            [u.user_func(u.resources) for u in self.all_user]
-        ]
-
+        curr_config = ConfigPackage()
+        curr_config.task_id = [u.name for u in self.all_user]
+        curr_config.resource_allocation = [u.resources for u in self.all_user]
+        curr_config.performance = [u.user_func(u.resources) for u in self.all_user]
         # context info
         for i in range(self.n_features):
-            curr_config.append([1.0] * len(self.all_user))
+            curr_config.context.append([1.0] * len(self.all_user))
 
         self.counter = self.counter + 1
         if self.workload_change > 0 and self.counter % self.workload_change == 0:

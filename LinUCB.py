@@ -119,7 +119,7 @@ def latin_hypercube_sampling(n, d, m, M, ratio):
 
 
 class LinUCB(ScheduleFrame):
-    def __init__(self, all_apps, n_cache, alpha, factor_alpha, n_features, sample=False):
+    def __init__(self, all_apps, n_cache, alpha, factor_alpha, n_features, sample=True):
         super().__init__()
         self.all_apps = all_apps
         self.num_apps = len(all_apps)
@@ -140,8 +140,8 @@ class LinUCB(ScheduleFrame):
         self.curr_best_config = None
         self.curr_best_reward = None
         self.duration_period = 0
-        self.threshold = config.APPROXIMATE_CONVERGENCE_THRESHOLD
-        self.probability_threshold = config.PROBABILITY_THRESHOLD
+        self.patience = config.PATIENCE
+        self.epsilon = config.EPSILON
 
         self.load_change_threshold = config.LOAD_CHANGE_THRESHOLD
         self.history_reward_window = config.HISTORY_REWARD_WINDOW
@@ -187,7 +187,7 @@ class LinUCB(ScheduleFrame):
             return cache_allocation
 
         self.times += 1
-        if self.duration_period > self.threshold and random.randint(1, 100) < self.probability_threshold:
+        if self.duration_period > self.patience and random.random() < self.epsilon:
             cache_allocation = []
             for app in self.all_apps:
                 cache_allocation.append(self.curr_best_config[app])
@@ -276,7 +276,6 @@ class LinUCB(ScheduleFrame):
         # aver_latency = sum(float(x) for x in performance) / len(performance)
         # th_reward = 100 / aver_latency
         # return th_reward, aver_latency
-
 
     def reset(self):
         self.alpha = self.init_factor[0]

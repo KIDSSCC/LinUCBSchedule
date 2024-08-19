@@ -42,6 +42,14 @@ class ScheduleFrame:
         pass
 
 
+class ConfigPackage:
+    def __init__(self):
+        self.task_id = []
+        self.resource_allocation = []
+        self.performance = []
+        self.context = []
+
+
 class ConfigManagement:
     def __init__(self):
         pass
