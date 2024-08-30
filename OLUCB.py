@@ -6,16 +6,28 @@ from ScheduleFrame import *
 
 
 def gen_feasible_configs(num_of_cache, cache_top_k):
-    # TODO：根据各个应用的top_k整理出的所有可行的结果
+    """
+    Given the top-k allocation schemes for each individual based on their expected highest reward, provide all feasible global schemes while maintaining the total resource constraint.
+    Args:
+        num_of_cache int: the total number of cache
+        cache_top_k list<list<int>>: the top-k allocation schemes for each individual based on their expected highest reward
+    Returns:
+        all_feasible_config list<list<int>>: all feasible global schemes
+    """
     num_app = len(cache_top_k)
     top_k = len(cache_top_k[0])
 
-    def gen_side(tmp, k, n=1):
+    def gen_side(tmp, n=1):
         """
-        :param root: root node, first app node
-        :param n: n_th in top_k
-        :return:
+        Generate all valid global configurations using a recursive method.
+        Args:
+            tmp list: current configuration
+            k int: the current depth
+            n int: the current depth
+        Returns:
+            tmp list: current configuration
         """
+        # TODO:The function has high complexity when the number of tasks is large and needs optimization.
         if n == num_app:
             return [[]]
         for k in range(top_k):
@@ -32,7 +44,7 @@ def gen_feasible_configs(num_of_cache, cache_top_k):
                     else:
                         tmp[j].append(app_core)
 
-        gen_side(n=n + 1, tmp=tmp, k=k)
+        gen_side(tmp=tmp, n=n + 1, )
         return tmp
 
     all_feasible_config = []
@@ -40,15 +52,15 @@ def gen_feasible_configs(num_of_cache, cache_top_k):
         cache_top_k.append(cache_top_k.pop(0))
         for j in range(top_k):
             tmp = [[cache_top_k[0][j]] for _ in range(top_k ** (num_app - 1))]
-            res = gen_side(tmp, k=0)
+            res = gen_side(tmp)
             for k in range(i + 1):
                 res = [[row[-1]] + row[:-1] for row in res]
             all_feasible_config.extend(res)
 
-    # 先去重
+    # deduplication
     unique_tuples = set(tuple(x) for x in all_feasible_config)
     all_feasible_config = [list(x) for x in unique_tuples]
-    # 对未利用的资源重新分配
+    # reallocation of underutilized resources
     for config in all_feasible_config:
         assert sum(config) <= num_of_cache, 'The allocated cache exceeds the limit'
         if sum(config) < num_of_cache:
@@ -61,6 +73,15 @@ def gen_feasible_configs(num_of_cache, cache_top_k):
 
 
 def get_top_k(arr, k, times):
+    """
+    select the top k items with the highest expected reward
+    Args:
+        arr list<double>: the expected reward of each configuration
+        k int: the number of top k items to select
+        times int: the number of times the bandit has been played
+    Returns:
+        arr_top_k_id list<int>: the indices of the top k items
+    """
     if times < 5 or random.randint(1, 10) > 8:
         arr_top_k_id = [random.randint(0, len(arr) - 1) for _ in range(k)]
     else:
@@ -118,7 +139,7 @@ def latin_hypercube_sampling(n, d, m, M, ratio):
     return sample_config
 
 
-class LinUCB(ScheduleFrame):
+class OLUCB(ScheduleFrame):
     def __init__(self, all_apps, n_cache, alpha, factor_alpha, n_features, sample=True):
         super().__init__()
         self.all_apps = all_apps

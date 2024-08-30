@@ -1,4 +1,4 @@
-from LinUCB import *
+from OLUCB import *
 from EpsilonGreedy import *
 from util import *
 
@@ -45,7 +45,7 @@ def for_epsilon_greedy():
     file_.close()
 
 
-def for_linucb():
+def for_OLUCB():
     cm = SimulationManagement()
     curr_config = cm.receive_config()
 
@@ -56,15 +56,15 @@ def for_linucb():
     factor_alpha = 0.98
     n_features = 10
     epochs = 3000
-    ucb_cache = LinUCB(all_app, 113, alpha, factor_alpha, n_features, True)
+    ucb_cache = OLUCB(all_app, 113, alpha, factor_alpha, n_features, True)
 
     file_ = open('linucb.log', 'w', newline='')
     start_time = time.time()
     for i in range(epochs):
-        if i == 1500:
-            print('save and load')
-            ucb_cache.save_to_pickle('OLUCB.pkl')
-            ucb_cache = LinUCB.load_from_pickle('OLUCB.pkl')
+        # if i == 1500:
+        #     print('save and load')
+        #     ucb_cache.save_to_pickle('OLUCB.pkl')
+        #     ucb_cache = OLUCB.load_from_pickle('OLUCB.pkl')
         curr_allocate = curr_config.resource_allocation
         performance = curr_config.performance
         context_info = curr_config.context
@@ -100,5 +100,5 @@ def for_linucb():
 
 if __name__ == '__main__':
     # for_epsilon_greedy()
-    for_linucb()
+    for_OLUCB()
     

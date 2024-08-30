@@ -4,3 +4,8 @@ backup
 .idea
 *.log
 *.pkl
+leveldb_uniform_100M
+mysql_uniform_100M
+leveldb_uniform_100M.cpp
+mysql_uniform_100M.cpp
+*.ipynb
