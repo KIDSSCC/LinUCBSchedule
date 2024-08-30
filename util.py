@@ -1,12 +1,41 @@
 import socket
 import time
 import subprocess
+import sys
 from ScheduleFrame import ConfigManagement, ConfigPackage
 
 
 cgroup_path = '/sys/fs/cgroup/blkio/'
 host = '127.0.0.1'
 port = 54000
+
+def get_pid(task_name):
+    all_pids = []
+    for name in task_name:
+        proc = subprocess.run(['pidof', name], shell=False, text=True, capture_output=True)
+        pid = proc.stdout.strip().split()
+        assert len(pid) != 0, '{} not found'.format(name)
+        assert len(pid) == 1, '{} have more than one proc'.format(name)
+        all_pids.append(pid[0])
+    return all_pids
+
+def get_cpu_allocation(pids):
+    cpu_allocation = []
+    for pid in pids:
+        try:
+            result = subprocess.run(['taskset', '-p', str(pid)], capture_output=True, text=True)
+            if result.returncode != 0:
+                raise RuntimeError(f"Failed to get CPU affinity for PID {pid}: {result.stderr.strip()}")
+            output = result.stdout.strip()
+            affinity_mask_hex = output.split()[-1]
+            affinity_mask_bin = bin(int(affinity_mask_hex, 16))
+            cpu_count = affinity_mask_bin.count('1')
+            cpu_allocation.append(cpu_count)
+        except Exception as e:
+            print(f"An error occurred: {e}")
+            sys.exit()
+
+    return cpu_allocation
 
 
 def get_last_line(file_name):
@@ -152,9 +181,15 @@ class ProtoSystemManagement(ConfigManagement):
         # pool name and cache allocation
         pool_and_size = get_pool_stats()
         pool_name = list(pool_and_size.keys())
-        pool_size = list(pool_and_size.values())
+        pids = get_pid(pool_name)
+
+        cache_allocation = list(pool_and_size.values())
+        cpu_allocation = get_cpu_allocation(pids)
+
         curr_config.task_id = pool_name
-        curr_config.resource_allocation = pool_size
+        curr_config.resource_allocation.append(cache_allocation)
+        curr_config.resource_allocation.append(cpu_allocation)
+        
         # performance
         sub_item_log = ['/home/md/SHMCachelib/bin/0809/' + name + '_subItem.log' for name in pool_name]
         performance = []
