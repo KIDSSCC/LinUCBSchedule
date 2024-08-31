@@ -8,6 +8,9 @@ from ScheduleFrame import ConfigManagement, ConfigPackage
 cgroup_path = '/sys/fs/cgroup/blkio/'
 host = '127.0.0.1'
 port = 54000
+disk_bandwidth = 512 * 1024
+passwd = 'k15648611412'
+
 
 def get_pid(task_name):
     all_pids = []
@@ -37,6 +40,22 @@ def get_cpu_allocation(pids):
 
     return cpu_allocation
 
+def get_diskbandwidth_allocation(pids):
+    pid_allocation = []
+    for pid in pids:
+        group_name = 'group_' + str(pid)
+        check_command = 'sudo -S cgget -g blkio:' + group_name
+        check_res = subprocess.run(check_command, input=passwd, shell=True, text=True, capture_output=True)
+        if 'cannot' in check_res.stderr:
+            print('non exist')
+            pid_allocation.append(None)
+        else:
+            get_command = 'sudo -S cgget -r blkio.throttle.read_bps_device ' + group_name
+            get_res = subprocess.run(get_command, input=passwd, shell=True, text=True, capture_output=True)
+            read_diskbandwidth = get_res.stdout.split('\n')[1].split(' ')[-1]
+            pid_allocation.append(int(read_diskbandwidth)/disk_bandwidth)
+
+    return pid_allocation
 
 def get_last_line(file_name):
     """
@@ -95,8 +114,8 @@ def clear_groups():
 
     Returns:
     """
-    command = 'ls -d ' + cgroup_path + '*/'
-    print(command)
+    command = 'ls -d ' + cgroup_path + 'group*/'
+    # print(command)
     result = subprocess.run(command, shell=True, text=True, capture_output=True)
     stdout = result.stdout
     if 'cannot' in stdout or "" == stdout:
@@ -105,11 +124,12 @@ def clear_groups():
         return
     all_groups = stdout.strip().split('\n')
     all_groups = [line.replace(cgroup_path, "")[:-1] for line in all_groups]
-    num = len(all_groups)
+    
     for group in all_groups:
-        delete_command = 'cgdelete -r blkio:' + group
-        print(delete_command)
-        subprocess.run(delete_command, shell=True, text=True, capture_output=False)
+        delete_command = 'sudo -S cgdelete -r blkio:' + group
+        # print(delete_command)
+        subprocess.run(delete_command, input=passwd, shell=True, text=True, capture_output=True)
+    # num = len(all_groups)
     # print('clear {} groups'.format(num))
 
 
@@ -152,24 +172,26 @@ def set_bandwidth(procs, bandwidths):
         # check the group exist
         check_command = 'cgget -g blkio:' + group_name
         # print(check_command)
-        check_res = subprocess.run(check_command, shell=True, text=True, capture_output=True)
+        check_command = 'sudo -S cgget -g blkio:' + group_name
+        # print(check_command)
+        check_res = subprocess.run(check_command, input=passwd, shell=True, text=True, capture_output=True)
         if 'cannot' in check_res.stderr:
             # group non-exist,need to create new group
             print('{} non-exist'.format(group_name))
             # create new group
-            create_command = 'cgcreate -g blkio:' + group_name
+            create_command = 'sudo -S cgcreate -g blkio:' + group_name
             # print(create_command)
-            subprocess.run(create_command, shell=True, text=True, capture_output=False)
+            subprocess.run(create_command, input=passwd, shell=True, text=True, capture_output=True)
             # add proc to group
-            classify_command = 'cgclassify -g blkio:' + group_name + ' ' + str(procs[i])
+            classify_command = 'sudo -S cgclassify -g blkio:' + group_name + ' ' + str(procs[i])
             # print(classify_command)
-            subprocess.run(classify_command, shell=True, text=True, capture_output=False)
+            subprocess.run(classify_command, input=passwd, shell=True, text=True, capture_output=True)
         # adjust the weigh
-        adjust_command = 'cgset -r blkio.throttle.read_bps_device="8:16 ' + \
-                         str(bandwidths[i] * 102400) + \
+        adjust_command = 'sudo -S cgset -r blkio.throttle.read_bps_device="8:16 ' + \
+                         str(bandwidths[i] * disk_bandwidth) + \
                          '" ' + group_name
         # print(adjust_command)
-        subprocess.run(adjust_command, shell=True, text=True, capture_output=False)
+        subprocess.run(adjust_command, input=passwd, shell=True, text=True, capture_output=True)
 
 
 class ProtoSystemManagement(ConfigManagement):
@@ -272,4 +294,13 @@ class SimulationManagement(ConfigManagement):
 
 
 if __name__ == '__main__':
-    pass
+    # clear_groups()
+    task_name = ['leveldb_uniform_100M', 'mysql_uniform_100M']
+    pids = get_pid(task_name)
+    print(pids)
+    get_res = get_diskbandwidth_allocation(pids)
+    print('before:', get_res)
+    set_bandwidth(pids, [2, 4])
+    get_res = get_diskbandwidth_allocation(pids)
+    print('after: ', get_res)
+    
